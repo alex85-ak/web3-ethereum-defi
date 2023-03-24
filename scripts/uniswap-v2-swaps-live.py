@@ -128,7 +128,7 @@ def decode_swap(web3: Web3, cache: BlockchainStateCache, log: LogResult) -> dict
 
     pair_contract_address = log["address"]
 
-    pair_details = cache.get_pair_details(Web3.toChecksumAddress(pair_contract_address))
+    pair_details = cache.get_pair_details(Web3.to_checksum_address(pair_contract_address))
 
     # Chop data blob to byte32 entries
     data_entries = decode_data(log["data"])
