@@ -16,7 +16,12 @@ logger = logging.getLogger(__name__)
 
 
 class SignedTransactionWithNonce(NamedTuple):
-    """Helper class to pass around the used nonce when signing txs from the wallet."""
+    """Helper class to pass around the used nonce when signing txs from the wallet.
+
+    - Emulate `SignedTransaction` from web3.py package
+
+    - Add some debugging helpers
+    """
 
     rawTransaction: HexBytes
     hash: HexBytes
@@ -24,6 +29,11 @@ class SignedTransactionWithNonce(NamedTuple):
     s: int
     v: int
     nonce: int
+
+    #: Undecoded transaction data as a dict.
+    #:
+    #: If broadcast fails, retain the source so we can debug the cause
+    source: Optional[dict] = None
 
     def __getitem__(self, index):
         return __getitem__(self, index)
@@ -87,6 +97,7 @@ class HotWallet:
             r=_signed.r,
             s=_signed.s,
             nonce=tx["nonce"],
+            source=tx,
         )
         return signed
 
@@ -96,7 +107,7 @@ class HotWallet:
         Useful to check if you have enough cryptocurrency for the gas fees.
         """
         balance = web3.eth.get_balance(self.address)
-        return web3.fromWei(balance, "ether")
+        return web3.from_wei(balance, "ether")
 
     @staticmethod
     def from_private_key(key: str) -> "HotWallet":

@@ -1,10 +1,16 @@
 """ABI loading from the precompiled bundle.
 
-`See Github for available contracts <https://github.com/tradingstrategy-ai/web3-ethereum-defi/tree/master/eth_defi/abi>`_.
+Provides functions to load ABI files and construct :py:class:`web3.contract.Contract` types.
+The results are cached for the speedup.
+
+We also provide some helper functions to deal with ABI encode/decode.
+
+`See Github for available contracts ABI files <https://github.com/tradingstrategy-ai/web3-ethereum-defi/tree/master/eth_defi/abi>`_.
 """
 import json
+from functools import lru_cache
 from pathlib import Path
-from typing import Optional, Type, Union, Collection, Any, Sequence
+from typing import Optional, Type, Union, Collection, Any, Sequence, Dict
 
 import eth_abi
 from eth_abi import decode
@@ -17,9 +23,12 @@ from web3.contract.contract import Contract, ContractFunction
 # Cache loaded ABI files in-process memory for speedup
 from web3.datastructures import AttributeDict
 
-_cache = {}
+
+# How big are our ABI and contract caches
+_CACHE_SIZE = 512
 
 
+@lru_cache(maxsize=_CACHE_SIZE)
 def get_abi_by_filename(fname: str) -> dict:
     """Reads a embedded ABI file and returns it.
 
@@ -31,33 +40,35 @@ def get_abi_by_filename(fname: str) -> dict:
 
     Loaded ABI files are cache in in-process memory to speed up future loading.
 
+    Any results are cached.
+
     :param web3: Web3 instance
     :param fname: `JSON filename from supported contract lists <https://github.com/tradingstrategy-ai/web3-ethereum-defi/tree/master/eth_defi/abi>`_.
     :return: Full contract interface, including `bytecode`.
     """
 
-    if fname in _cache:
-        return _cache[fname]
-
     here = Path(__file__).resolve().parent
     abi_path = here / "abi" / Path(fname)
     with open(abi_path, "rt", encoding="utf-8") as f:
         abi = json.load(f)
-    _cache[fname] = abi
 
     return abi
 
 
+@lru_cache(maxsize=_CACHE_SIZE)
 def get_contract(web3: Web3, fname: str, bytecode: Optional[str] = None) -> Type[Contract]:
     """Create a Contract proxy class from our bundled contracts.
 
     `See Web3.py documentation on Contract instances <https://web3py.readthedocs.io/en/stable/contracts.html#contract-deployment-example>`_.
 
+    Any results are cached. Web3 connection is part of the cache key.
+
     :param web3: Web3 instance
     :param bytecode: Override bytecode payload for the contract
     :param fname: `JSON filename from supported contract lists <https://github.com/tradingstrategy-ai/web3-ethereum-defi/tree/master/eth_defi/abi>`_.
-    :return: Python class
+    :return: Contract proxy class
     """
+
     contract_interface = get_abi_by_filename(fname)
     abi = contract_interface["abi"]
 

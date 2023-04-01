@@ -188,7 +188,7 @@ def deploy_trading_pair(
 
     assert token_a.address != token_b.address
 
-    if token_a.address > token_b.address:
+    if int(token_a.address, 16) > int(token_b.address, 16):
         # Swap around to satisfy Uni v2 address sort criteria
         token_a, token_b = token_b, token_a
         liquidity_a, liquidity_b = liquidity_b, liquidity_a
@@ -207,7 +207,6 @@ def deploy_trading_pair(
     pair_address = event0["args"]["pair"]
 
     if liquidity_a > 0:
-
         router = deployment.router
 
         assert token_a.functions.balanceOf(deployer).call() > liquidity_a, f"Cannot deploy, not enough tokens for {token_a}"

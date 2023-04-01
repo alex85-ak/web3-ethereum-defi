@@ -20,9 +20,10 @@ See Enzyme Subgraphs: ---
 """
 import enum
 import re
+from _decimal import Decimal
 from dataclasses import dataclass, field
 from pprint import pformat
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 
 from web3._utils.events import EventLogErrorFlags
 
@@ -35,9 +36,23 @@ from web3.contract import Contract
 from eth_defi.revert_reason import fetch_transaction_revert_reason
 
 
+#: Enzyme deployment details for Polygon
+#:
+#: See :py:meth:`EnzymeDeployment.fetch_deployment`
+#:
+#: See https://docs.enzyme.finance/developers/contracts/polygon
+#:
+POLYGON_DEPLOYMENT = {
+    "comptroller_lib": "0xf5fc0e36c85552E44354132D188C33D9361eB441",
+    "usdc": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+    "weth": "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
+    "wmatic": "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
+    "deployed_at": 25_825_795,  # When comptroller lib was deployed
+}
+
+
 class RateAsset(enum.Enum):
     """See IChainlinkPriceFeedMixin.sol"""
-
     ETH = 0
     USD = 1
 
@@ -56,7 +71,7 @@ class EnzymeContracts:
     """
 
     web3: Web3
-    deployer: HexAddress
+    deployer: Optional[HexAddress]
     dispatcher: Contract = None
     external_position_factory: Contract = None
     protocol_fee_reserve_lib: Contract = None
@@ -128,7 +143,7 @@ class EnzymeDeployment:
         token: Contract,
         aggregator: Contract,
         rate_asset: RateAsset,
-    ):
+    ) -> str:
         """Add a primitive asset to a Enzyme protocol.
 
         This will tell Enzyme how to value this asset.
@@ -136,7 +151,12 @@ class EnzymeDeployment:
         - See ValueInterpreter.sol
 
         - See ChainlinkPriceFeedMixin.sol
+
+        :return:
+            Transaction hash for the addition
         """
+
+        assert isinstance(token, Contract), f"Got bad token: {token}"
 
         assert isinstance(rate_asset, RateAsset)
         assert token.functions.decimals().call() >= 6
@@ -147,7 +167,8 @@ class EnzymeDeployment:
         primitives = [token.address]
         aggregators = [aggregator.address]
         rate_assets = [rate_asset.value]
-        value_interpreter.functions.addPrimitives(primitives, aggregators, rate_assets).transact({"from": self.deployer})
+        tx_hash = value_interpreter.functions.addPrimitives(primitives, aggregators, rate_assets).transact({"from": self.deployer})
+        return tx_hash
 
     def create_new_vault(
         self,
@@ -171,7 +192,15 @@ class EnzymeDeployment:
         """
 
         fund_deployer = self.contracts.fund_deployer
-        tx_hash = fund_deployer.functions.createNewFund(owner, fund_name, fund_symbol, denomination_asset.address, shares_action_time_lock, fee_manager_config_data, policy_manager_config_data,).transact(
+        tx_hash = fund_deployer.functions.createNewFund(
+            owner,
+            fund_name,
+            fund_symbol,
+            denomination_asset.address,
+            shares_action_time_lock,
+            fee_manager_config_data,
+            policy_manager_config_data,
+        ).transact(
             {
                 "from": self.deployer,
             }
@@ -291,6 +320,87 @@ class EnzymeDeployment:
         return EnzymeDeployment(
             web3,
             deployer,
+            contracts,
+            mln,
+            weth,
+        )
+
+    def fetch_vault(self, vault_address: HexAddress | str) -> Tuple[Contract, Contract]:
+        """Fetch existing Enzyme vault contracts.
+
+        :return:
+            Tuple (Comptroller contract, vault contract)
+        """
+        vault = self.contracts.get_deployed_contract("VaultLib", vault_address)
+        comptroller_address = vault.functions.getAccessor().call()
+        comptroller = self.contracts.get_deployed_contract("ComptrollerLib", comptroller_address)
+        return comptroller, vault
+
+    def resolve_usd_price_feed(self, token_address: HexAddress) -> Decimal:
+        """Get a price using Enzyme configured price feeds.
+
+        - Resolve Chainlink USD price feed for the
+
+        - Resolve price
+
+        :return:
+            Human-readable price
+        """
+        pass
+
+
+    def fetch_usd_price(self, token_address: HexAddress) -> Decimal:
+        """Get a price using Enzyme configured price feeds.
+
+        - Resolve Chainlink USD price feed for the
+
+        - Resolve price
+
+        :return:
+            Human-readable price
+        """
+        pass
+
+    @staticmethod
+    def fetch_deployment(web3: Web3, contract_addresses: dict) -> "EnzymeDeployment":
+        """Fetch enzyme deployment and some of its contract.
+
+        Read existing Enzyme deployment from on-chain.
+
+        .. note::
+
+            Does not do complete contract resolution yet.
+
+        Example:
+
+        .. code-block:: python
+
+            from eth_defi.enzyme.deployment import EnzymeDeployment, POLYGON_DEPLOYMENT
+
+            deployment = EnzymeDeployment.fetch_deployment(web3, POLYGON_DEPLOYMENT)
+            assert deployment.mln.functions.symbol().call() == "MLN"
+            assert deployment.weth.functions.symbol().call() == "WMATIC"
+
+        :param contract_addresses:
+            Dictionary of contract addresses required to resolve Enzyme deployment
+
+        :return:
+            Enzyme deployment details
+
+        """
+
+        contracts = EnzymeContracts(web3, None)
+        contracts.comptroller_lib = contracts.get_deployed_contract("ComptrollerLib", contract_addresses["comptroller_lib"])
+        contracts.fund_deployer = contracts.get_deployed_contract("FundDeployer", contracts.comptroller_lib.functions.getFundDeployer().call())
+        contracts.integration_manager = contracts.get_deployed_contract("IntegrationManager", contracts.comptroller_lib.functions.getIntegrationManager().call())
+        contracts.value_interpreter = contracts.get_deployed_contract("ValueInterpreter", contracts.comptroller_lib.functions.getValueInterpreter().call())
+
+        mln = get_deployed_contract(web3, "ERC20MockDecimals.json", contracts.comptroller_lib.functions.getMlnToken().call())
+        weth = get_deployed_contract(web3, "ERC20MockDecimals.json", contracts.comptroller_lib.functions.getWethToken().call())
+
+        return EnzymeDeployment(
+            web3,
+            None,
             contracts,
             mln,
             weth,

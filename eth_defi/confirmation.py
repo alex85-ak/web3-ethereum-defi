@@ -5,14 +5,20 @@ import logging
 import time
 from typing import Dict, List, Set, Union
 
+import rlp
 from eth_account.datastructures import SignedTransaction
 from hexbytes import HexBytes
 from web3 import Web3
 from web3.exceptions import TransactionNotFound
 
 from eth_defi.hotwallet import SignedTransactionWithNonce
+from eth_defi.tx import decode_signed_transaction
 
 logger = logging.getLogger(__name__)
+
+
+class BroadcastFailure(Exception):
+    """Could not broadcast a transaction for some reason."""
 
 
 class ConfirmationTimedOut(Exception):
@@ -68,7 +74,6 @@ def wait_transactions_to_complete(
     unconfirmed_txs: Set[HexBytes] = {HexBytes(tx) for tx in txs}
 
     while len(unconfirmed_txs) > 0:
-
         # Transaction hashes that receive confirmation on this round
         confirmation_received = set()
 
@@ -127,6 +132,13 @@ def broadcast_transactions(
         Set to zero to return as soon as we see the first transaction receipt
         or when using insta-mining tester RPC.
     :return: List of tx hashes
+
+    :raise BroadcastFailure:
+        If the JSON-RPC node rejects the transaction.
+
+        - Anvil will reject some transactions immediately: if there is not enough gas money
+
+        - Ethereum Tester reject some transactions immediately on any error in automining mode
     """
     # Detect Ganache
     chain_id = web3.eth.chain_id
@@ -142,7 +154,14 @@ def broadcast_transactions(
     hashes = []
     for tx in txs:
         assert isinstance(tx, SignedTransaction) or isinstance(tx, SignedTransactionWithNonce), f"Got {tx}"
-        hash = web3.eth.send_raw_transaction(tx.rawTransaction)
+
+        try:
+            hash = web3.eth.send_raw_transaction(tx.rawTransaction)
+        except ValueError as e:
+            # Anvil/Ethereum tester immediately fail on the broadcast
+            # ValueError: {'code': -32003, 'message': 'Insufficient funds for gas * price + value'}
+            decoded_tx = decode_signed_transaction(tx.rawTransaction)
+            raise BroadcastFailure(f"Could not broadcast transaction: {decoded_tx}") from e
 
         assert hash
 
@@ -151,7 +170,6 @@ def broadcast_transactions(
         # And you can guess this code is not testable. You only run in Github CI
         # and hope it works.
         if bad_node_workaround:
-
             # Try to be gentle with Ganache
             time.sleep(bad_node_sleep)
 

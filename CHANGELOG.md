@@ -1,3 +1,32 @@
+# Current
+
+- Add initial Chainlink support
+- Add `eth_defi.reader.multithread.MultithreadEventReader` easy to use high-level interface
+- Add preliminary `assert_call_success_with_explanation` - but looks like Anvil support is still missing, 
+  so currently hacked together
+- Add Enzyme's price feeds and some initial ChainLink support
+- Add Enzyme's `Vault.fetch`
+- Add `eth_defi.utils.to_unix_timestamp`
+- Add `eth_defi.reorganisation_monitor.create_reorganisation_monitor`
+- Rename: `eth_defi.enzyme.events.Withdrawal` -> `Redemption`
+- Optimize `get_contract` with improved caching
+- 
+
+# 0.15.3
+
+- Add `EnzymeDeployment.fetch_vault`
+- Add `Vault.fetch_deployment_event`
+- Add `BroadcastFailure` exception
+- Fix token sorting condition in Uniswap v2 pair deployment
+- Fix Anvil launch to do three attempts by default if the process fails to launch
+- Web3.py 6.0 release API fixes
+
+# 0.15.2
+
+- Add API call count middleware
+- Fix: Clean accidentally released breakpoint code in revert middleware 
+
+
 # 0.15.1
 
 - Added [a script for verifying the integrity of your EVM JSON-RPC node data](https://web3-ethereum-defi.readthedocs.io/tutorials/index.html)
